@@ -1,10 +1,14 @@
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QMainWindow, QToolBar, QPushButton
+from PyQt5.QtCore import Qt, QEvent, QObject
+from PyQt5.QtGui import QIcon, QMouseEvent, QKeyEvent
+from PyQt5.QtWidgets import QMainWindow, QToolBar, QPushButton, QVBoxLayout, QWidget, QCheckBox
 
+from rendering import Canvas
 from ..layouts.ui_mainwindow import Ui_MainWindow
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+    ctrlPressed = False
+
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setupUi(self)
@@ -12,51 +16,100 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.toolbar = QToolBar("Панель инструментов")
         self.addToolBar(self.toolbar)
 
-        self.selectRectangleButton = QPushButton(QIcon("./icons/rectangle.png"), "Прямоугольник", self)
-        self.selectRectangleButton.path = "rectangle"
-        self.selectRectangleButton.pressed.connect(self.buttonRectanglePushed)
-        self.toolbar.addWidget(self.selectRectangleButton)
+        self.chooseRectangleButton = QPushButton(QIcon("./icons/rectangle.png"), "Прямоугольник", self)
+        self.chooseRectangleButton.name = "rectangle"
+        self.chooseRectangleButton.pressed.connect(self.buttonRectanglePushed)
+        self.toolbar.addWidget(self.chooseRectangleButton)
 
-        self.selectTriangleButton = QPushButton(QIcon("./icons/triangle.png"), "Треугольник", self)
-        self.selectTriangleButton.path = "triangle"
-        self.selectTriangleButton.pressed.connect(self.buttonTrianglePushed)
-        self.toolbar.addWidget(self.selectTriangleButton)
+        self.chooseTriangleButton = QPushButton(QIcon("./icons/triangle.png"), "Треугольник", self)
+        self.chooseTriangleButton.name = "triangle"
+        self.chooseTriangleButton.pressed.connect(self.buttonTrianglePushed)
+        self.toolbar.addWidget(self.chooseTriangleButton)
 
-        self.selectCircleButton = QPushButton(QIcon("./icons/Circle.png"), "Окружность", self)
-        self.selectCircleButton.path = "circle"
-        self.selectCircleButton.pressed.connect(self.buttonCirclePushed)
-        self.toolbar.addWidget(self.selectCircleButton)
+        self.chooseCircleButton = QPushButton(QIcon("./icons/circle.png"), "Окружность", self)
+        self.chooseCircleButton.name = "circle"
+        self.chooseCircleButton.pressed.connect(self.buttonCirclePushed)
+        self.toolbar.addWidget(self.chooseCircleButton)
 
-        self.selectedShapeButton: QPushButton | None = None
+        self.checkBoxSelectAll = QCheckBox("Выделять всех в пересечении", self)
+        self.checkBoxSelectAll.stateChanged.connect(self.checkBoxSelectAllStateChanged)
+        self.toolbar.addWidget(self.checkBoxSelectAll)
+
+        self.chosenShapeButton: QPushButton | None = None
+
+        self.canvas = Canvas(self)
+        self.canvas.setObjectName("canvas")
+        layout = QVBoxLayout()
+        layout.addWidget(self.canvas)
+        central_widget = QWidget()
+        central_widget.setLayout(layout)
+        self.setCentralWidget(central_widget)
+
+        self.installEventFilter(self)
 
     def buttonRectanglePushed(self):
-        if self.selectedShapeButton != self.selectRectangleButton:
-            self.selectedShapeButton = self.selectRectangleButton
+        if self.chosenShapeButton != self.chooseRectangleButton:
+            self.chosenShapeButton = self.chooseRectangleButton
         else:
-            self.selectedShapeButton = None
-
-        self.setShapeButtonsIcons()
+            self.chosenShapeButton = None
+        self.processSelectionChanges()
 
     def buttonTrianglePushed(self):
-        if self.selectedShapeButton != self.selectTriangleButton:
-            self.selectedShapeButton = self.selectTriangleButton
+        if self.chosenShapeButton != self.chooseTriangleButton:
+            self.chosenShapeButton = self.chooseTriangleButton
         else:
-            self.selectedShapeButton = None
+            self.chosenShapeButton = None
 
-        self.setShapeButtonsIcons()
+        self.processSelectionChanges()
 
     def buttonCirclePushed(self):
-        if self.selectedShapeButton != self.selectCircleButton:
-            self.selectedShapeButton = self.selectCircleButton
+        if self.chosenShapeButton != self.chooseCircleButton:
+            self.chosenShapeButton = self.chooseCircleButton
         else:
-            self.selectedShapeButton = None
+            self.chosenShapeButton = None
 
-        self.setShapeButtonsIcons()
+        self.processSelectionChanges()
 
-    def setShapeButtonsIcons(self):
-        self.selectRectangleButton.setIcon(QIcon("./icons/rectangle.png"))
-        self.selectTriangleButton.setIcon(QIcon("./icons/triangle.png"))
-        self.selectCircleButton.setIcon(QIcon("./icons/circle.png"))
+    def setShapeButtonsIcon(self):
+        self.chooseRectangleButton.setIcon(QIcon("./icons/rectangle.png"))
+        self.chooseTriangleButton.setIcon(QIcon("./icons/triangle.png"))
+        self.chooseCircleButton.setIcon(QIcon("./icons/circle.png"))
 
-        if self.selectedShapeButton:
-            self.selectedShapeButton.setIcon(QIcon(f"./icons/{self.selectedShapeButton.path}_selected.png"))
+        if self.chosenShapeButton:
+            self.chosenShapeButton.setIcon(QIcon(f"./icons/{self.chosenShapeButton.name}_chosen.png"))
+
+    def processSelectionChanges(self):
+        self.setShapeButtonsIcon()
+        self.canvas.chosenShape = self.chosenShapeButton.name if self.chosenShapeButton else None
+
+    def checkBoxSelectAllStateChanged(self):
+        self.canvas.selectAll = self.checkBoxSelectAll.isChecked()
+
+    def keyPressEvent(self, a0: QKeyEvent):
+        super().keyPressEvent(a0)
+        if a0.key() == Qt.Key_Delete:
+            self.canvas.clear()
+        elif a0.key() == Qt.Key_Control:
+            self.canvas.multipleSelection = True
+        elif a0.key() == Qt.Key_D:  # Вправо
+            self.canvas.moveSelectedShapes(10, 0)
+        elif a0.key() == Qt.Key_S:  # Вниз
+            self.canvas.moveSelectedShapes(0, 10)
+        elif a0.key() == Qt.Key_A:  # Влево
+            self.canvas.moveSelectedShapes(-10, 0)
+        elif a0.key() == Qt.Key_W:  # Вверх
+            self.canvas.moveSelectedShapes(0, -10)
+
+    def keyReleaseEvent(self, event: QKeyEvent):
+        super().keyReleaseEvent(event)
+        if event.key() == Qt.Key_Control:
+            self.canvas.multipleSelection = False
+
+    def eventFilter(self, obj: QObject, event: QEvent):
+        if event.type() == QEvent.KeyPress:
+            self.keyPressEvent(event)
+            return True
+        elif event.type() == QEvent.KeyRelease:
+            self.keyReleaseEvent(event)
+            return True
+        return super(MainWindow, self).eventFilter(obj, event)
