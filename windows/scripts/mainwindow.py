@@ -1,6 +1,6 @@
 from PyQt5.QtCore import Qt, QEvent, QObject
-from PyQt5.QtGui import QIcon, QMouseEvent, QKeyEvent
-from PyQt5.QtWidgets import QMainWindow, QToolBar, QPushButton, QVBoxLayout, QWidget, QCheckBox
+from PyQt5.QtGui import QIcon, QMouseEvent, QKeyEvent, QResizeEvent
+from PyQt5.QtWidgets import QMainWindow, QToolBar, QPushButton, QVBoxLayout, QWidget, QCheckBox, QColorDialog
 
 from rendering import Canvas
 from ..layouts.ui_mainwindow import Ui_MainWindow
@@ -34,6 +34,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.checkBoxSelectAll = QCheckBox("Выделять всех в пересечении", self)
         self.checkBoxSelectAll.stateChanged.connect(self.checkBoxSelectAllStateChanged)
         self.toolbar.addWidget(self.checkBoxSelectAll)
+
+        self.action_chooseColor.triggered.connect(self.action_chooseColorTriggered)
 
         self.chosenShapeButton: QPushButton | None = None
 
@@ -99,11 +101,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.canvas.moveSelectedShapes(-10, 0)
         elif a0.key() == Qt.Key_W:  # Вверх
             self.canvas.moveSelectedShapes(0, -10)
+        elif a0.key() == Qt.Key_Q: # Уменьшить фигуру
+            self.canvas.scaleSelectedShapes(-1)
+        elif a0.key() == Qt.Key_E: # Увеличить фигуру
+            self.canvas.scaleSelectedShapes(1)
+        print("problem fixed")
 
     def keyReleaseEvent(self, event: QKeyEvent):
         super().keyReleaseEvent(event)
         if event.key() == Qt.Key_Control:
             self.canvas.multipleSelection = False
+
+    def resizeEvent(self, a0: QResizeEvent):
+        self.canvas.sizeChanged(a0)
 
     def eventFilter(self, obj: QObject, event: QEvent):
         if event.type() == QEvent.KeyPress:
@@ -113,3 +123,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.keyReleaseEvent(event)
             return True
         return super(MainWindow, self).eventFilter(obj, event)
+
+    def action_chooseColorTriggered(self):
+        self.canvas.setCurrentColor(QColorDialog.getColor(initial=self.canvas.currentColor))

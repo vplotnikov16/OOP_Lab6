@@ -1,5 +1,5 @@
 from PyQt5.QtCore import QPoint, Qt
-from PyQt5.QtGui import QMouseEvent, QPaintEvent, QColor, QPainter, QKeyEvent
+from PyQt5.QtGui import QMouseEvent, QPaintEvent, QColor, QPainter, QKeyEvent, QResizeEvent
 from PyQt5.QtWidgets import QWidget
 
 from shapes import Shape, Rectangle, Triangle, Circle, SelectedShape
@@ -28,9 +28,19 @@ class Canvas(QWidget):
             shape.draw(qp)
 
     def moveSelectedShapes(self, dx: int, dy: int):
+        # if not all(shape.isAbleToMove(dx, dy, self.width(), self.height()) for shape in filter(lambda shape: isinstance(shape, SelectedShape), self.container)):
+        #     return
         for shape in self.container:
             if isinstance(shape, SelectedShape):
                 shape.move(dx, dy, self.width(), self.height())
+        self.update()
+
+    def scaleSelectedShapes(self, dsize: int):
+        # if not all(shape.isAbleToScale(dsize, self.width(), self.height()) for shape in filter(lambda shape: isinstance(shape, SelectedShape), self.container)):
+        #     return
+        for shape in self.container:
+            if isinstance(shape, SelectedShape):
+                shape.scale(dsize, self.width(), self.height())
         self.update()
 
     def deselectAllShapes(self):
@@ -79,4 +89,16 @@ class Canvas(QWidget):
                         break
         else:
             self.createNewShape(event.pos())
+        self.update()
+
+    def setCurrentColor(self, color: QColor):
+        self.currentColor = color
+        for shape in self.container:
+            if isinstance(shape, SelectedShape):
+                shape.setColor(self.currentColor)
+        self.update()
+
+    def sizeChanged(self, event: QResizeEvent):
+        for shape in self.container:
+            shape.handleResizing(event.size().width(), event.size().height())
         self.update()

@@ -13,14 +13,19 @@ class Shape:
     topLeftCorner: QPoint = ...
     _width: int = ...
     _height: int = ...
-    color: QColor = ...
+    _color: QColor = ...
 
     def __init__(self, color: QColor):
-        self.color = color
+        self._color = color
 
     def isAbleToMove(self, dx: int, dy: int, formW: int, formH: int):
         s1 = 0 <= self.topLeftCorner.x() + dx and 0 <= self.topLeftCorner.y() + dy
         s2 = self.topLeftCorner.x() + self._width + dx <= formW and self.topLeftCorner.y() + self._height + dy <= formH
+        return s1 and s2
+
+    def isAbleToScale(self, dsize: int, formW: int, formH: int):
+        s1 = 0 <= self.topLeftCorner.x() - dsize and 0 <= self.topLeftCorner.y() - dsize
+        s2 = self.topLeftCorner.x() + self._width + dsize <= formW and self.topLeftCorner.y() + self._height + dsize <= formH
         return s1 and s2
 
     def move(self, dx: int, dy: int, formW: int, formH: int) -> bool:
@@ -28,6 +33,15 @@ class Shape:
             return False
         self.center = QPoint(self.center.x() + dx, self.center.y() + dy)
         self.topLeftCorner = QPoint(self.topLeftCorner.x() + dx, self.topLeftCorner.y() + dy)
+        return True
+
+    def scale(self, dsize: int, formW: int, formH: int) -> bool:
+        if not self.isAbleToScale(dsize, formW, formH):
+            return False
+        self.topLeftCorner = QPoint(self.topLeftCorner.x() - dsize, self.topLeftCorner.y() - dsize)
+        self._width += dsize
+        self._height += dsize
+
         return True
 
     def draw(self, qp: QPainter):
@@ -44,11 +58,32 @@ class Shape:
     def getHeight(self):
         return self._height
 
+    def setColor(self, color: QColor):
+        self._color = color
+
+    def getColor(self):
+        return self._color
+
     def getRealShape(self):
         return self
 
     def getSquaredDistTo(self, point: QPoint):
         return (self.center.x() - point.x()) ** 2 + (self.center.y() - point.y()) ** 2
+
+    def calculatePrivateParams(self):
+        pass
+
+    def handleResizing(self, formW: int, formH: int):
+        if self.topLeftCorner.x() < 0:
+            self.topLeftCorner.setX(0)
+        if self.topLeftCorner.y() < 0:
+            self.topLeftCorner.setY(0)
+        if formW < self.topLeftCorner.x() + self._width:
+            diff = self.topLeftCorner.x() + self._width - formW
+        if formH < self.topLeftCorner.y() + self._height:
+            self.topLeftCorner.setY(formH - self._height)
+        self.center = QPoint(self.topLeftCorner.x() + self._width // 2, self.topLeftCorner.y() + self._height // 2)
+        self.calculatePrivateParams()
 
 
 class SelectedShape(Shape):
@@ -57,16 +92,27 @@ class SelectedShape(Shape):
     def __init__(self, color: QColor, shape: Shape):
         super().__init__(color)
         self.decoratedShape = shape
-        self.topLeftCorner = QPoint(shape.topLeftCorner.x() - 2, shape.topLeftCorner.y() - 2)
-        self._width = shape.getWidth() + 2
-        self._height = shape.getHeight() + 2
-        self.center = QPoint(self.topLeftCorner.x() + self._width // 2, self.topLeftCorner.y() + self._height // 2)
+        self.calculatePrivateParams()
+
+    def calculatePrivateParams(self):
+        self.decoratedShape.calculatePrivateParams()
+        self.topLeftCorner = QPoint(self.decoratedShape.topLeftCorner.x() - 2, self.decoratedShape.topLeftCorner.y() - 2)
+
+        self._width = self.decoratedShape.getWidth() + 2
+        self._height = self.decoratedShape.getHeight() + 2
+        self.center = self.decoratedShape.center
 
     def getWidth(self):
         return self.decoratedShape.getHeight()
 
     def getHeight(self):
         return self.decoratedShape.getHeight()
+
+    def setColor(self, color: QColor):
+        self.getRealShape().setColor(color)
+
+    def getColor(self):
+        self.getRealShape().getColor()
 
     def getSquaredDistTo(self, point: QPoint):
         return self.decoratedShape.getSquaredDistTo(point)
@@ -86,8 +132,22 @@ class SelectedShape(Shape):
         self.topLeftCorner = QPoint(self.topLeftCorner.x() + dx, self.topLeftCorner.y() + dy)
         return True
 
+    def scale(self, dsize: int, formW: int, formH: int) -> bool:
+        canScale = self.decoratedShape.scale(dsize, formW, formH)
+        if not canScale:
+            return False
+
+        self.calculatePrivateParams()
+        return True
+
     def getRealShape(self):
         return self.decoratedShape.getRealShape()
+
+
+    def handleResizing(self, formW: int, formH: int):
+        super().handleResizing(formW, formH)
+        self.decoratedShape.handleResizing(formW, formH)
+        self.calculatePrivateParams()
 
 
 class Rectangle(Shape):
@@ -97,11 +157,14 @@ class Rectangle(Shape):
         self.center = center
         self._width = width
         self._height = height
-        self.topLeftCorner = QPoint(center.x() - width // 2, center.y() - height // 2)
+        self.calculatePrivateParams()
+
+    def calculatePrivateParams(self):
+        self.topLeftCorner = QPoint(self.center.x() - self._width // 2, self.center.y() - self._height // 2)
 
     def draw(self, qp: QPainter):
         qp.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(self.color, 3, Qt.SolidLine)
+        pen = QPen(self._color, 3, Qt.SolidLine)
         qp.setPen(pen)
         qp.drawRect(self.topLeftCorner.x(), self.topLeftCorner.y(), self._width, self._height)
 
@@ -110,6 +173,7 @@ class Rectangle(Shape):
 
     def getHeight(self):
         return self._height
+
 
 
 class Triangle(Shape):
@@ -122,24 +186,28 @@ class Triangle(Shape):
         super().__init__(color)
         self.center = center
         self._circumScribedCircleRadius = circumScribedCircleRadius
+        self.calculateVertices()
+        self.calculatePrivateParams()
+
+    def calculateVertices(self):
         angle_offset = 0
         angle_between_vertices = 2 * math.pi / 3
-
         self._vertex1 = QPoint(
-            center.x() + int(self._circumScribedCircleRadius * math.cos(angle_offset)),
-            center.y() - int(self._circumScribedCircleRadius * math.sin(angle_offset))
+            self.center.x() + int(self._circumScribedCircleRadius * math.cos(angle_offset)),
+            self.center.y() - int(self._circumScribedCircleRadius * math.sin(angle_offset))
         )
 
         self._vertex2 = QPoint(
-            center.x() + int(self._circumScribedCircleRadius * math.cos(angle_offset + angle_between_vertices)),
-            center.y() - int(self._circumScribedCircleRadius * math.sin(angle_offset + angle_between_vertices))
+            self.center.x() + int(self._circumScribedCircleRadius * math.cos(angle_offset + angle_between_vertices)),
+            self.center.y() - int(self._circumScribedCircleRadius * math.sin(angle_offset + angle_between_vertices))
         )
 
         self._vertex3 = QPoint(
-            center.x() + int(self._circumScribedCircleRadius * math.cos(angle_offset + 2 * angle_between_vertices)),
-            center.y() - int(self._circumScribedCircleRadius * math.sin(angle_offset + 2 * angle_between_vertices))
+            self.center.x() + int(self._circumScribedCircleRadius * math.cos(angle_offset + 2 * angle_between_vertices)),
+            self.center.y() - int(self._circumScribedCircleRadius * math.sin(angle_offset + 2 * angle_between_vertices))
         )
 
+    def calculatePrivateParams(self):
         min_x = min(self._vertex1.x(), self._vertex2.x(), self._vertex3.x())
         max_x = max(self._vertex1.x(), self._vertex2.x(), self._vertex3.x())
         min_y = min(self._vertex1.y(), self._vertex2.y(), self._vertex3.y())
@@ -149,9 +217,19 @@ class Triangle(Shape):
         self._width = max_x - min_x
         self._height = max_y - min_y
 
+    def scale(self, dsize: int, formW: int, formH: int) -> bool:
+        canScale = super().scale(dsize, formW, formH)
+        if not canScale:
+            return False
+
+        self._circumScribedCircleRadius += dsize
+        self.calculateVertices()
+        self.calculatePrivateParams()
+        return True
+
     def draw(self, qp: QPainter):
         qp.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(self.color, 3, Qt.SolidLine)
+        pen = QPen(self._color, 3, Qt.SolidLine)
         qp.setPen(pen)
         qp.drawPolygon(self._vertex1, self._vertex2, self._vertex3)
 
@@ -184,6 +262,11 @@ class Triangle(Shape):
 
         return not (any_neg and any_pos)
 
+    def handleResizing(self, formW: int, formH: int):
+        super().handleResizing(formW, formH)
+        #self.calculateVertices()
+        self.calculatePrivateParams()
+
 
 class Circle(Shape):
     _radius: int = ...
@@ -192,15 +275,26 @@ class Circle(Shape):
         super().__init__(color)
         self.center = center
         self._radius = radius
-        self.topLeftCorner = QPoint(center.x() - self._radius, center.y() - self._radius)
+        self.calculatePrivateParams()
+
+    def calculatePrivateParams(self):
+        self.topLeftCorner = QPoint(self.center.x() - self._radius, self.center.y() - self._radius)
         self._width = 2 * self._radius
         self._height = 2 * self._radius
 
     def draw(self, qp: QPainter):
         qp.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(self.color, 3, Qt.SolidLine)
+        pen = QPen(self._color, 3, Qt.SolidLine)
         qp.setPen(pen)
         qp.drawEllipse(self.topLeftCorner.x(), self.topLeftCorner.y(), 2 * self._radius, 2 * self._radius)
+
+    def scale(self, dsize: int, formW: int, formH: int) -> bool:
+        canScale = super().scale(dsize, formW, formH)
+        if not canScale:
+            return False
+
+        self._radius += dsize
+        return True
 
     def getRadius(self):
         return self._radius
